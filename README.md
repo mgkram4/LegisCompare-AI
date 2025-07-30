@@ -1,4 +1,18 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Contest Doge
+
+This project is a Next.js application with a FastAPI backend designed to compare and analyze legislative bills. It leverages large language models (via OpenAI) to provide insights into bills.
+
+## How it works
+
+The backend exposes an API endpoint `/api/compare` that accepts two legislative bills as input. It then performs the following analyses on these bills:
+
+- **Diff Analysis:** Identifies the differences between the two bills.
+- **Summary Analysis:** Provides a concise summary of the bills.
+- **Stakeholder Analysis:** Determines key stakeholders affected by the bills.
+- **Bias Detection:** Identifies potential biases within the bills.
+- **Forecast Analysis:** Predicts potential outcomes or impacts of the bills.
+
+The frontend, running on `http://localhost:3000`, interacts with this backend to display the analysis results.
 
 ## Getting Started
 
@@ -34,3 +48,4 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+# legal-tool
