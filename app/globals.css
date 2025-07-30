@@ -1,26 +1,118 @@
-@import "tailwindcss";
-
+/* Government Professional Design Tokens */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --primary-gradient: linear-gradient(135deg, #1e40af 0%, #3730a3 100%);
+  --success-gradient: linear-gradient(135deg, #059669 0%, #047857 100%);
+  --warning-gradient: linear-gradient(135deg, #d97706 0%, #b45309 100%);
+  --danger-gradient: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+  --glass-bg: rgba(30, 41, 59, 0.4);
+  --glass-border: rgba(148, 163, 184, 0.2);
+  --text-primary: rgba(248, 250, 252, 0.95);
+  --text-secondary: rgba(203, 213, 225, 0.8);
+
+  /* Professional color scheme */
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  --accent-blue: #1e40af;
+  --accent-green: #059669;
+  --accent-orange: #d97706;
+  --accent-red: #dc2626;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+@import "tailwindcss";
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #0f172a; /* Professional dark navy */
+    --foreground: #f8fafc;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: url('/grain.png'); /* Subtle grain texture */
+    opacity: 0.02;
+    pointer-events: none;
+    z-index: -1;
   }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans); /* Use Geist Sans as primary font */
+  overflow-x: hidden; /* Prevent horizontal scroll */
+}
+
+/* Glowing borders on focus */
+*:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--background), 0 0 0 4px var(--neon-accent);
+}
+
+/* Neon accent for CTAs (example) */
+.btn-primary {
+  background: var(--primary-gradient);
+  color: var(--text-primary);
+  border: none;
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-primary:hover {
+  box-shadow: 0 0 15px rgba(118, 75, 162, 0.7);
+}
+
+/* Professional card style */
+.glass-card {
+  backdrop-filter: blur(8px) saturate(120%);
+  background: rgba(30, 41, 59, 0.3);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px 0 rgba(15, 23, 42, 0.15);
+}
+
+/* Specific diff colors */
+.bg-diffRed {
+  background-color: rgba(248, 113, 113, 0.1); /* Red for deletions */
+}
+
+.bg-diffGreen {
+  background-color: rgba(52, 211, 153, 0.1); /* Green for additions */
+}
+
+.bg-diffYellow {
+  background-color: rgba(251, 191, 36, 0.1); /* Yellow for modifications */
+}
+
+/* Ensure Geist fonts are available */
+@layer base {
+  :root {
+    --font-geist-sans: "Geist Sans", sans-serif;
+    --font-geist-mono: "Geist Mono", monospace;
+  }
+}
+
+@layer components {
+  .grid-areas-compare-mobile {
+    grid-template-areas:
+      "header"
+      "bills"
+      "analysis"
+      "stakeholders"
+      "forecast"
+      "actions";
+  }
+
+  .grid-areas-compare-desktop {
+    grid-template-areas:
+      "header header header"
+      "bills bills analysis"
+      "stakeholders stakeholders analysis"
+      "forecast forecast analysis"
+      "actions actions actions";
+  }
 }
