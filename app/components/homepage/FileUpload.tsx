@@ -1,12 +1,11 @@
 "use client";
 
+import { storeFileInLocalStorage } from '@/file-storage';
 import { useRouter } from 'next/navigation';
 import { ChangeEvent, useRef, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import Progress from '../interactive/Progress';
-
-
-
+ 
 const FileUpload = () => {
   const [billA, setBillA] = useState<File | null>(null);
   const [billB, setBillB] = useState<File | null>(null);
@@ -14,7 +13,7 @@ const FileUpload = () => {
   const [progress, setProgress] = useState(0);
   const router = useRouter();
   const fileInputRefA = useRef<HTMLInputElement>(null);
-
+ 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>, setBill: (file: File | null) => void) => {
     if (e.target.files && e.target.files[0]) {
       setBill(e.target.files[0]);
@@ -22,84 +21,77 @@ const FileUpload = () => {
       setBill(null);
     }
   };
-
+ 
   const handleChooseFileClick = () => {
     fileInputRefA.current?.click();
   };
-
+ 
   const handleAnalyzeClick = async () => {
     if (billA && billB) {
       setIsLoading(true);
       setProgress(0);
-
-      // Simulate progress
+ 
       const progressInterval = setInterval(() => {
-        setProgress(prev => {
-          if (prev >= 5) {
-            clearInterval(progressInterval);
-            return 5;
-          }
-          return prev + 1;
-        });
-      }, 1000);
-
-      const comparisonId = uuidv4();
-      const readerA = new FileReader();
-      const readerB = new FileReader();
-
-      readerA.onload = (e) => localStorage.setItem(`billA-${comparisonId}`, e.target?.result as string);
-      readerB.onload = (e) => localStorage.setItem(`billB-${comparisonId}`, e.target?.result as string);
-
-      readerA.readAsText(billA);
-      readerB.readAsText(billB);
-
-      router.push(`/compare/${comparisonId}`);
+        setProgress(prev => Math.min(prev + 5, 95));
+      }, 500);
+ 
+      try {
+        const comparisonId = uuidv4();
+ 
+        // Use the new centralized file storage function
+        await storeFileInLocalStorage(`billA-file-${comparisonId}`, billA);
+        await storeFileInLocalStorage(`billB-file-${comparisonId}`, billB);
+        
+        setProgress(100);
+        
+        setTimeout(() => {
+          router.push(`/compare/${comparisonId}`);
+        }, 100);
+      } catch (error) {
+        console.error("Error during file analysis setup:", error);
+        alert(`Failed to prepare files for analysis: ${error}`);
+        setIsLoading(false);
+      } finally {
+        clearInterval(progressInterval);
+      }
     } else {
       alert("Please select both bills to analyze.");
     }
   };
-
+ 
   const handleDemoClick = async () => {
     console.log("Loading demo files...");
     setIsLoading(true);
     setProgress(0);
-
-    // Simulate progress for demo
+ 
     const progressInterval = setInterval(() => {
-      setProgress(prev => {
-        if (prev >= 90) {
-          return prev;
-        }
-        return prev + 10;
-      });
+      setProgress(prev => Math.min(prev + 10, 90));
     }, 500);
-
+ 
     const comparisonId = uuidv4();
     try {
-      // Fetch demo files from the /test directory
-      const billA_response = await fetch('/hr1_enrolled.pdf');
-      const billB_response = await fetch('/hr748_enrolled.pdf');
-
+      const billA_response = await fetch('/test/education_equity_original.txt');
+      const billB_response = await fetch('/test/education_equity_revised.txt');
+ 
       if (!billA_response.ok || !billB_response.ok) {
         throw new Error('Failed to fetch demo files');
       }
-
+ 
       const billA_blob = await billA_response.blob();
       const billB_blob = await billB_response.blob();
       
-      const billA = new File([billA_blob], 'hr1_enrolled.pdf', { type: 'application/pdf' });
-      const billB = new File([billB_blob], 'hr748_enrolled.pdf', { type: 'application/pdf' });
-
-      const readerA = new FileReader();
-      const readerB = new FileReader();
-
-      readerA.onload = (e) => localStorage.setItem(`billA-${comparisonId}`, e.target?.result as string);
-      readerB.onload = (e) => localStorage.setItem(`billB-${comparisonId}`, e.target?.result as string);
-
-      readerA.readAsText(billA);
-      readerB.readAsText(billB);
+      const billA_file = new File([billA_blob], 'education_equity_original.txt', { type: 'text/plain' });
+      const billB_file = new File([billB_blob], 'education_equity_revised.txt', { type: 'text/plain' });
+ 
+      // Use the new centralized file storage function
+      await storeFileInLocalStorage(`billA-file-${comparisonId}`, billA_file);
+      await storeFileInLocalStorage(`billB-file-${comparisonId}`, billB_file);
       
-      router.push(`/compare/${comparisonId}`);
+      setProgress(100);
+      
+      setTimeout(() => {
+        router.push(`/compare/${comparisonId}`);
+      }, 100);
     } catch (error) {
       console.error("Error during demo analysis:", error);
       alert("Network error: Unable to connect to the analysis service. Please try again.");

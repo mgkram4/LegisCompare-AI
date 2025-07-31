@@ -32,6 +32,7 @@ const FileDropzone: React.FC<FileDropzoneProps> = ({ onFileAccepted, label }) =>
           const arrayBuffer = e.target?.result as ArrayBuffer;
           const pdf = await pdfjs.getDocument(arrayBuffer).promise;
           let fullText = '';
+          // TextItem interface for PDF text extraction
           interface TextItem {
             str: string;
           }
@@ -40,7 +41,7 @@ const FileDropzone: React.FC<FileDropzoneProps> = ({ onFileAccepted, label }) =>
             const textContent = await page.getTextContent();
             fullText += textContent.items.map((item) => {
                 if (typeof item === 'object' && 'str' in item) {
-                    return item.str;
+                    return (item as TextItem).str;
                 }
                 return ''; // Handle TextMarkedContent or other types
             }).join(' ') + '\n';

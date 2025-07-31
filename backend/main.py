@@ -1,479 +1,314 @@
-
 import io
 import json
+import logging
 import os
-import re
-from typing import Any, Dict, List, Optional, Union
+from datetime import datetime
+from typing import List, Optional
 
-from dotenv import load_dotenv  # Import load_dotenv
+import httpx
+import PyPDF2
+from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from openai import OpenAI
 from pydantic import BaseModel
-from pypdf import PdfReader
-from starlette.responses import JSONResponse
 
-load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '.env')) # Load environment variables from .env file
+# Load environment variables
+load_dotenv()
 
-# ---- OpenAI client (supports both new and legacy SDKs) -----------------------
-USE_OPENAI = bool(os.getenv("OPENAI_API_KEY"))
-print(f"DEBUG: OPENAI_API_KEY is set: {bool(os.getenv("OPENAI_API_KEY"))}") # Debug print
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-import httpx  # Import httpx
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-
-def _openai_client():
-    if not USE_OPENAI:
-        return None
-    try:
-        # New SDK (1.0.0+)
-        # Create OpenAI client with httpx configuration
-        import httpx
-        from openai import OpenAI
-        http_client = httpx.Client(proxies={})
-        client = OpenAI(http_client=http_client)
-        return ("new", client)
-    except ImportError:
-        # Legacy SDK fallback (< 1.0.0)
-        try:
-            import openai
-            return ("legacy", openai)
-        except ImportError:
-            raise ImportError("OpenAI library not installed. Run: pip install openai")
-
-def llm_json(system: str, prompt: str, temperature: float = 0.2) -> Dict[str, Any]:
-    """
-    Call the LLM and return parsed JSON. If OPENAI_API_KEY is not set,
-    return a simple heuristic/dummy structure for local dev.
-    """
-    if not USE_OPENAI:
-        # Minimal offline fallback so the app doesn't crash during dev.
-        try:
-            data = json.loads(prompt[prompt.find("{"):prompt.rfind("}")+1])
-        except Exception:
-            data = {}
-        return {"offline_stub": True, "input_hint": list(data.keys())}
-    
-    mode, client = _openai_client()
-    
-    if mode == "new":
-        # New SDK (1.0.0+)
-        try:
-            resp = client.chat.completions.create(
-                model=OPENAI_MODEL,
-                temperature=temperature,
-                response_format={"type": "json_object"},  # This ensures JSON response
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": prompt}
-                ],
-            )
-            content = resp.choices[0].message.content
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"OpenAI API error: {str(e)}")
-    else:
-        # Legacy SDK (< 1.0.0)
-        try:
-            resp = client.ChatCompletion.create(
-                model=OPENAI_MODEL,
-                temperature=temperature,
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": prompt},
-                ],
-            )
-            content = resp.choices[0].message.content
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"OpenAI API error: {str(e)}")
-    
-    try:
-        return json.loads(content)
-    except Exception:
-        raise HTTPException(status_code=500, detail=f"LLM did not return valid JSON:\n{content[:500]}")
-
-# ---- Prompts -----------------------------------------------------------------
-SYSTEM_MSG = (
-    "You are a legislative analysis model. Always return valid UTF-8 JSON "
-    "matching the requested schema. Cite evidence by section_id and line_range "
-    "from the input. If unsure, set confidence='low' and explain. "
-    "Never invent sections that don't exist in the input."
+app = FastAPI(
+    title="Document Comparison API",
+    description="API for comparing PDF documents using AI analysis",
+    version="1.0.0"
 )
 
-NORMALIZE_PROMPT = """
-Extract a hierarchical outline of the bill with stable IDs.
-
-Return JSON:
-{
-  "bill_id": "%(bill_id)s",
-  "sections": [
-    {
-      "section_id": "S<number or title>",
-      "title": "string",
-      "line_start": int,
-      "line_end": int,
-      "text": "verbatim text of this section"
-    }
-  ]
-}
-
-Rules:
-- Preserve original order.
-- Generate section_id from headings; if none, synthesize S1, S2…
-- line_* are 1-based indices relative to the provided text split by newline.
-- Return JSON only.
-
---- BILL %(bill_id)s START ---
-%(bill_text)s
---- BILL %(bill_id)s END ---
-"""
-
-ALIGN_PROMPT = """
-Given two structured bills, align semantically similar sections.
-
-Input JSON:
-{
-  "billA": %(billA_json)s,
-  "billB": %(billB_json)s
-}
-
-Return JSON:
-{
-  "pairs": [
-    {
-      "a_section_id": "string|null",
-      "b_section_id": "string|null",
-      "similarity": 0.0,
-      "rationale": "one sentence"
-    }
-  ]
-}
-
-Rules:
-- Unpaired additions/removals use null on the other side.
-- Keep only pairs with similarity >= 0.35, else leave unpaired.
-- JSON only.
-"""
-
-DIFF_PROMPT = """
-Produce a git-style diff by aligned pairs plus orphaned sections.
-
-Input JSON:
-{
-  "billA": %(billA_json)s,
-  "billB": %(billB_json)s,
-  "pairs": %(pairs_json)s
-}
-
-Return JSON (not text blocks):
-{
-  "changes": [
-    {
-      "id": "chg_001",
-      "change_type": "addition|removal|modification",
-      "a_section_id": "string|null",
-      "b_section_id": "string|null",
-      "a_text": "string|null",
-      "b_text": "string|null",
-      "diff_preview": "git-like snippet, max 240 chars",
-      "impact": {
-        "legal": "one sentence",
-        "social": "one sentence",
-        "economic": "one sentence"
-      },
-      "evidence": [
-        {"bill_id": "A|B", "section_id": "string", "line_range": "Lstart-Lend"}
-      ],
-      "confidence": "low|medium|high",
-      "notes": "optional assumptions"
-    }
-  ]
-}
-
-Rules:
-- For modifications, include the most changed sentences in diff_preview.
-- Evidence must reference real section_id + line_range from inputs.
-- JSON only.
-"""
-
-STAKEHOLDER_PROMPT = """
-Identify stakeholders and link them to specific change IDs.
-
-Input JSON:
-{
-  "changes": %(changes_json)s
-}
-
-Return JSON:
-{
-  "stakeholders": [
-    {
-      "name": "e.g., Independent contractors, State Medicaid agencies",
-      "category": "industry|demographic|institution|ngo|other",
-      "effect": "benefit|harm|mixed",
-      "mechanism": "how the change affects them",
-      "magnitude": "low|medium|high",
-      "time_horizon": "short|medium|long",
-      "linked_changes": ["chg_001","chg_002"],
-      "confidence": "low|medium|high"
-    }
-  ]
-}
-
-Rules:
-- Prefer referencing specific change IDs to justify claims.
-- JSON only.
-"""
-
-BIAS_PROMPT = """
-Analyze the provided legislative text for potential biases or disproportionate impacts on specific groups.
-Consider potential biases related to demographics, socioeconomic status, geographic location, or any other relevant factors.
-
-Input JSON:
-{
-  "bill_text": "%(bill_text)s"
-}
-
-Return JSON:
-{
-  "bias_analysis": [
-    {
-      "type": "demographic|socioeconomic|geographic|other",
-      "description": "one sentence description of the potential bias",
-      "impacted_groups": ["group1", "group2"],
-      "evidence": [
-        {"bill_id": "A", "section_id": "string", "line_range": "Lstart-Lend"}
-      ],
-      "confidence": "low|medium|high"
-    }
-  ]
-}
-
-Rules:
-- Be specific about the type of bias and the impacted groups.
-- Cite evidence from the original text where possible.
-- JSON only.
-"""
-
-FORECAST_PROMPT = """
-Forecast outcomes if Bill B (compared to Bill A) is enacted.
-
-Input JSON:
-{
-  "changes": %(changes_json)s,
-  "stakeholders": %(stakeholders_json)s
-}
-
-Return JSON:
-{
-  "assumptions": ["bullet assumptions"],
-  "risks": ["key legal/political risks"],
-  "forecasts": {
-    "short_1y": [
-      {
-        "domain": "economic|social|political|legal|operational",
-        "impact": "concise statement",
-        "direction": "increase|decrease|mixed|unknown",
-        "magnitude": "low|medium|high",
-        "who": ["stakeholder names"],
-        "linked_changes": ["chg_..."],
-        "metrics_to_track": ["KPI1","KPI2"],
-        "confidence": "low|medium|high"
-      }
-    ],
-    "medium_3y": [],
-    "long_5y": []
-  }
-}
-
-Rules:
-- Tie each forecast to concrete changes and stakeholders.
-- Include measurable KPIs where possible.
-- JSON only.
-"""
-
-CRITIQUE_PROMPT = """
-Review the JSON below for overclaims, missing evidence, or non-JSON parts.
-
-Input:
-%(combined_json)s
-
-Return JSON:
-{
-  "issues": [
-    {"path": "changes[3].impact.economic", "problem": "no evidence citation"}
-  ],
-  "ok": true
-}
-"""
-
-# ---- Schemas -----------------------------------------------------------------
-class CompareRequest(BaseModel):
-    billA_text: Optional[str] = None
-    billB_text: Optional[str] = None
-
-class CompareResponse(BaseModel):
-    normalizedA: Dict[str, Any]
-    normalizedB: Dict[str, Any]
-    pairs: Dict[str, Any]
-    changes: Dict[str, Any]
-    stakeholders: Dict[str, Any]
-    forecast: Dict[str, Any]
-    critique: Dict[str, Any]
-    bias_analysis: Dict[str, Any] # Added bias analysis field
-
-# ---- Helpers -----------------------------------------------------------------
-def read_upload(file: Optional[UploadFile]) -> Optional[str]:
-    if not file:
-        return None
-    
-    # Read the file content once
-    raw_content = file.file.read()
-    
-    if file.content_type == 'application/pdf':
-        try:
-            pdf_reader = PdfReader(io.BytesIO(raw_content))
-            text = ""
-            for page in pdf_reader.pages:
-                page_text = page.extract_text()
-                if page_text:
-                    text += page_text
-            if not text.strip():
-                raise ValueError("No text could be extracted from PDF.")
-            return text
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Failed to process PDF file: {e}")
-    else:
-        # Assume text file
-        try:
-            return raw_content.decode("utf-8")
-        except UnicodeDecodeError:
-            # best effort for other text-like files
-            return raw_content.decode("latin-1", errors="ignore")
-
-def normalize_bill(bill_id: str, text: str) -> Dict[str, Any]:
-    prompt = NORMALIZE_PROMPT % {"bill_id": bill_id, "bill_text": text}
-    return llm_json(SYSTEM_MSG, prompt, temperature=0.2)
-
-def align_sections(billA_json: Dict[str, Any], billB_json: Dict[str, Any]) -> Dict[str, Any]:
-    prompt = ALIGN_PROMPT % {
-        "billA_json": json.dumps(billA_json, ensure_ascii=False),
-        "billB_json": json.dumps(billB_json, ensure_ascii=False),
-    }
-    return llm_json(SYSTEM_MSG, prompt, temperature=0.2)
-
-def make_diff(billA_json: Dict[str, Any], billB_json: Dict[str, Any], pairs_json: Dict[str, Any]) -> Dict[str, Any]:
-    prompt = DIFF_PROMPT % {
-        "billA_json": json.dumps(billA_json, ensure_ascii=False),
-        "billB_json": json.dumps(billB_json, ensure_ascii=False),
-        "pairs_json": json.dumps(pairs_json, ensure_ascii=False),
-    }
-    out = llm_json(SYSTEM_MSG, prompt, temperature=0.2)
-    # Ensure IDs exist
-    if "changes" in out:
-        for i, ch in enumerate(out["changes"]):
-            ch.setdefault("id", f"chg_{i+1:03d}")
-    return out
-
-def analyze_stakeholders(changes_json: Dict[str, Any]) -> Dict[str, Any]:
-    prompt = STAKEHOLDER_PROMPT % {
-        "changes_json": json.dumps(changes_json, ensure_ascii=False)
-    }
-    return llm_json(SYSTEM_MSG, prompt, temperature=0.2)
-
-def analyze_bias(bill_text: str) -> Dict[str, Any]: # New helper function for bias analysis
-    prompt = BIAS_PROMPT % {
-        "bill_text": bill_text
-    }
-    return llm_json(SYSTEM_MSG, prompt, temperature=0.2)
-
-def forecast_impacts(changes_json: Dict[str, Any], stakeholders_json: Dict[str, Any]) -> Dict[str, Any]:
-    prompt = FORECAST_PROMPT % {
-        "changes_json": json.dumps(changes_json, ensure_ascii=False),
-        "stakeholders_json": json.dumps(stakeholders_json, ensure_ascii=False),
-    }
-    return llm_json(SYSTEM_MSG, prompt, temperature=0.2)
-
-def critique_all(payload: Dict[str, Any]) -> Dict[str, Any]:
-    prompt = CRITIQUE_PROMPT % {
-        "combined_json": json.dumps(payload, ensure_ascii=False)
-    }
-    return llm_json(SYSTEM_MSG, prompt, temperature=0.2)
-
-# ---- FastAPI -----------------------------------------------------------------
-app = FastAPI(title="LegisDiff API", version="1.0.0")
+# Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.getenv("CORS_ORIGINS", "*").split(","),
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-@app.post("/api/compare", response_model=CompareResponse)
-async def compare_route(
-    billA_text: Optional[str] = Form(None),
-    billB_text: Optional[str] = Form(None),
-    billA_file: Optional[UploadFile] = File(None),
-    billB_file: Optional[UploadFile] = File(None),
-    demo: Optional[bool] = Form(False),
-):
-    """Accepts either raw text via form fields or file uploads. Returns structured JSON."""
-    # Demo seeds (tiny text so you can test without keys)
-    if demo and not billA_text and not billB_text:
-        billA_text = "SECTION 1. Establishes a $50 fee. SECTION 2. Creates a small grant program."
-        billB_text = "SECTION 1. Establishes a $75 fee. SECTION 2. Creates a grant program with eligibility for nonprofits."
+# Configure OpenAI
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
-    if not billA_text:
-        billA_text = read_upload(billA_file)
-    if not billB_text:
-        billB_text = read_upload(billB_file)
+class ComparisonRequest(BaseModel):
+    bill_a_name: str
+    bill_b_name: str
 
-    if not billA_text or not billB_text:
-        raise HTTPException(status_code=400, detail="Provide Bill A and Bill B as text or files.")
+class ComparisonResponse(BaseModel):
+    executive_summary: dict
+    stakeholder_analysis: List[dict]
+    impact_forecast: dict
+    metadata: dict
 
-    # 1) Normalize
-    normalizedA = normalize_bill("A", billA_text)
-    normalizedB = normalize_bill("B", billB_text)
+def pdf_to_text(pdf_file: UploadFile) -> str:
+    """
+    Extract text from a PDF file using PyPDF2.
+    
+    Args:
+        pdf_file: Uploaded PDF file
+        
+    Returns:
+        str: Extracted text from the PDF
+    """
+    try:
+        logger.info(f"Processing PDF: {pdf_file.filename} ({pdf_file.size} bytes)")
+        
+        # Read the uploaded file
+        content = pdf_file.file.read()
+        pdf_file.file.seek(0)  # Reset file pointer for potential reuse
+        
+        # Create a BytesIO object
+        pdf_stream = io.BytesIO(content)
+        
+        # Create PDF reader
+        pdf_reader = PyPDF2.PdfReader(pdf_stream)
+        
+        # Extract text from each page
+        extracted_text = ""
+        for page_num in range(len(pdf_reader.pages)):
+            page = pdf_reader.pages[page_num]
+            page_text = page.extract_text()
+            extracted_text += page_text
+            extracted_text += "\n\n"  # Add spacing between pages
+            
+            logger.info(f"Processed page {page_num + 1}/{len(pdf_reader.pages)}")
+        
+        if not extracted_text.strip():
+            raise ValueError("No text could be extracted from the PDF")
+        
+        logger.info(f"Successfully extracted {len(extracted_text)} characters from PDF")
+        return extracted_text
+        
+    except Exception as e:
+        logger.error(f"Error processing PDF {pdf_file.filename}: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Failed to process PDF: {str(e)}")
 
-    # 2) Align
-    pairs = align_sections(normalizedA, normalizedB)
+def analyze_documents_with_ai(bill_a_text: str, bill_b_text: str) -> dict:
+    """
+    Analyze two documents using OpenAI for comparison.
+    
+    Args:
+        bill_a_text: Text from the first document
+        bill_b_text: Text from the second document
+        
+    Returns:
+        dict: Analysis results
+    """
+    try:
+        logger.info("Starting AI analysis of documents")
+        
+        # Prepare the prompt for analysis
+        prompt = f"""
+        Analyze these two legislative documents and provide detailed comparison information.
 
-    # 3) Diff
-    changes = make_diff(normalizedA, normalizedB, pairs)
+        Original Document:
+        {bill_a_text[:8000]}  # Limit text length for API
 
-    # 4) Stakeholders
-    stakeholders = analyze_stakeholders(changes)
+        Proposed Document:
+        {bill_b_text[:8000]}  # Limit text length for API
 
-    # 5) Forecast
-    forecast = forecast_impacts(changes, stakeholders)
+        Please provide a JSON response with the following structure:
+        {{
+            "executive_summary": {{
+                "bill_a_title": "Title of first document",
+                "bill_b_title": "Title of second document",
+                "primary_subject": "Main subject area",
+                "key_changes": [
+                    {{
+                        "topic": "Specific topic",
+                        "description": "Description of change",
+                        "impact": "Impact assessment",
+                        "original_quote": "Quote from original",
+                        "proposed_quote": "Quote from proposed"
+                    }}
+                ],
+                "overall_impact_assessment": "Overall assessment"
+            }},
+            "stakeholder_analysis": [
+                {{
+                    "name": "Stakeholder group",
+                    "category": "industry|demographic|institution|other",
+                    "effect": "benefit|harm|mixed",
+                    "description": "How they are affected",
+                    "evidence_quote": "Supporting quote"
+                }}
+            ],
+            "impact_forecast": {{
+                "assumptions": ["Key assumptions"],
+                "short_term_1y": {{ "economic": "...", "social": "...", "political": "..." }},
+                "medium_term_3y": {{ "economic": "...", "social": "...", "political": "..." }},
+                "long_term_5y": {{ "economic": "...", "social": "...", "political": "..." }}
+            }}
+        }}
+        """
+        
+        # Call OpenAI API
+        # Latest OpenAI client initialization (v1.56+)
+        client = OpenAI(
+            api_key=OPENAI_API_KEY,
+            timeout=60.0,  # 60 second timeout
+            max_retries=2
+        )
+        response = client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[
+                {"role": "system", "content": "You are an expert legislative analyst. Provide detailed, accurate analysis in JSON format."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3,
+            max_tokens=4000
+        )
+        
+        # Parse the response
+        content = response.choices[0].message.content
+        
+        # Try to extract JSON from the response
+        try:
+            # Look for JSON in the response
+            start_idx = content.find('{')
+            end_idx = content.rfind('}') + 1
+            if start_idx != -1 and end_idx != 0:
+                json_str = content[start_idx:end_idx]
+                result = json.loads(json_str)
+            else:
+                raise ValueError("No JSON found in response")
+                
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse JSON response: {e}")
+            logger.error(f"Raw response: {content}")
+            raise HTTPException(status_code=500, detail="Failed to parse AI analysis response")
+        
+        logger.info("AI analysis completed successfully")
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error in AI analysis: {str(e)}")
+        logger.error(f"Error type: {type(e).__name__}")
+        logger.error(f"Error details: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"AI analysis failed: {str(e)}")
 
-    # 6) Bias Analysis (new step)
-    bias_analysis = analyze_bias(billA_text) # Using billA_text for bias analysis, assuming it's the primary document
+@app.get("/")
+async def root():
+    """Health check endpoint."""
+    return {"message": "Document Comparison API is running", "timestamp": datetime.now().isoformat()}
 
-    # 7) Critique
-    combo = {
-        "normalizedA": normalizedA,
-        "normalizedB": normalizedB,
-        "pairs": pairs,
-        "changes": changes,
-        "stakeholders": stakeholders,
-        "forecast": forecast,
-        "bias_analysis": bias_analysis, # Added bias analysis to combo
+@app.get("/health")
+async def health_check():
+    """Detailed health check."""
+    openai_configured = bool(os.getenv("OPENAI_API_KEY"))
+    return {
+        "ok": True,
+        "openai": openai_configured,
+        "model": OPENAI_MODEL,
+        "timestamp": datetime.now().isoformat()
     }
-    critique = critique_all(combo)
 
-    return JSONResponse(
-        content={
-            "normalizedA": normalizedA,
-            "normalizedB": normalizedB,
-            "pairs": pairs,
-            "changes": changes,
-            "stakeholders": stakeholders,
-            "forecast": forecast,
-            "critique": critique,
-            "bias_analysis": bias_analysis, # Added bias analysis to response
+@app.post("/api/test-pdf")
+async def test_pdf_extraction(file: UploadFile = File(...)):
+    """
+    Test endpoint for PDF text extraction.
+    """
+    try:
+        logger.info(f"=== PDF TEST ENDPOINT STARTED ===")
+        logger.info(f"Testing PDF extraction for: {file.filename} ({file.size} bytes)")
+        
+        if not file.filename.lower().endswith('.pdf'):
+            raise HTTPException(status_code=400, detail="File must be a PDF")
+        
+        start_time = datetime.now()
+        extracted_text = pdf_to_text(file)
+        end_time = datetime.now()
+        
+        processing_time = (end_time - start_time).total_seconds() * 1000  # Convert to milliseconds
+        
+        logger.info(f"PDF extraction completed in {processing_time:.0f}ms")
+        
+        return {
+            "success": True,
+            "filename": file.filename,
+            "fileSize": file.size,
+            "textLength": len(extracted_text),
+            "processingTimeMs": int(processing_time),
+            "preview": extracted_text[:500] + ("..." if len(extracted_text) > 500 else ""),
+            "fullText": extracted_text
         }
-    )
+        
+    except Exception as e:
+        logger.error(f"=== PDF TEST ENDPOINT ERROR === {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/healthz")
-def healthz():
-    return {"ok": True, "openai": USE_OPENAI, "model": OPENAI_MODEL} 
+@app.post("/api/compare")
+async def compare_documents(
+    bill_a_file: UploadFile = File(...),
+    bill_b_file: UploadFile = File(...)
+):
+    """
+    Compare two PDF documents and provide AI analysis.
+    """
+    try:
+        logger.info("=== STARTING DOCUMENT COMPARISON ===")
+        
+        # Validate files
+        if not bill_a_file.filename.lower().endswith('.pdf') or not bill_b_file.filename.lower().endswith('.pdf'):
+            raise HTTPException(status_code=400, detail="Both files must be PDFs")
+        
+        logger.info(f"Files received: {bill_a_file.filename} ({bill_a_file.size} bytes), {bill_b_file.filename} ({bill_b_file.size} bytes)")
+        
+        # Extract text from both PDFs
+        logger.info("=== EXTRACTING TEXT FROM FILES ===")
+        start_time = datetime.now()
+        
+        bill_a_text = pdf_to_text(bill_a_file)
+        bill_b_text = pdf_to_text(bill_b_file)
+        
+        extraction_time = (datetime.now() - start_time).total_seconds() * 1000
+        logger.info(f"=== TEXT EXTRACTION COMPLETED ===")
+        logger.info(f"Extraction time: {extraction_time:.0f}ms")
+        logger.info(f"Text extracted: Bill A ({len(bill_a_text)} chars), Bill B ({len(bill_b_text)} chars)")
+        
+        # Check OpenAI configuration
+        if not os.getenv("OPENAI_API_KEY"):
+            raise HTTPException(status_code=500, detail="OpenAI API key not configured")
+        
+        # Perform AI analysis
+        logger.info("Running AI analysis...")
+        analysis_results = analyze_documents_with_ai(bill_a_text, bill_b_text)
+        
+        # Prepare response
+        response_data = {
+            "executive_summary": analysis_results.get("executive_summary", {}),
+            "stakeholder_analysis": analysis_results.get("stakeholder_analysis", []),
+            "impact_forecast": analysis_results.get("impact_forecast", {}),
+            "metadata": {
+                "bill_a_name": bill_a_file.filename,
+                "bill_b_name": bill_b_file.filename,
+                "processed_at": datetime.now().isoformat()
+            }
+        }
+        
+        logger.info("=== DOCUMENT COMPARISON COMPLETED ===")
+        return response_data
+        
+    except Exception as e:
+        logger.error(f"=== API ERROR === {str(e)}")
+        logger.error(f"Error type: {type(e).__name__}")
+        logger.error(f"Error details: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

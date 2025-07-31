@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { AlertCircle, CheckCircle, Clock, Lightbulb, Star, TrendingUp, XCircle } from 'lucide-react';
+import { AlertCircle, CheckCircle, Clock, Lightbulb, Star, TrendingUp } from 'lucide-react';
 import React from 'react';
 
 interface Change {
@@ -16,6 +16,8 @@ interface Change {
     economic?: string;
   };
   confidence?: "low" | "medium" | "high";
+  us_priority_score?: number;
+  keywords?: string[];
 }
 
 interface Stakeholder {
@@ -47,6 +49,47 @@ interface KeyInsight {
   source?: string;
 }
 
+// Helper function to calculate impact score for prioritizing changes by US value
+const calculateImpactScore = (change: Change): number => {
+  // Use AI-generated priority score if available, otherwise fallback to manual calculation
+  if (change.us_priority_score && change.us_priority_score > 0) {
+    return change.us_priority_score;
+  }
+  
+  let score = 0;
+  
+  // Economic impact scoring (highest priority for US)
+  const economicImpact = change.impact?.economic?.toLowerCase() || '';
+  if (economicImpact.includes('billion')) score += 100;
+  else if (economicImpact.includes('million')) score += 50;
+  else if (economicImpact.includes('cost') || economicImpact.includes('budget') || economicImpact.includes('fund')) score += 30;
+  else if (economicImpact.includes('tax') || economicImpact.includes('revenue')) score += 40;
+  
+  // Legal impact scoring
+  const legalImpact = change.impact?.legal?.toLowerCase() || '';
+  if (legalImpact.includes('federal') || legalImpact.includes('constitution')) score += 80;
+  else if (legalImpact.includes('state') || legalImpact.includes('government')) score += 40;
+  else if (legalImpact.includes('regulation') || legalImpact.includes('compliance')) score += 30;
+  
+  // Social impact scoring
+  const socialImpact = change.impact?.social?.toLowerCase() || '';
+  if (socialImpact.includes('million') || socialImpact.includes('national')) score += 60;
+  else if (socialImpact.includes('healthcare') || socialImpact.includes('education') || socialImpact.includes('security')) score += 70;
+  else if (socialImpact.includes('benefit') || socialImpact.includes('service')) score += 25;
+  
+  // Confidence multiplier
+  if (change.confidence === 'high') score *= 1.5;
+  else if (change.confidence === 'medium') score *= 1.2;
+  else if (change.confidence === 'low') score *= 0.8;
+  
+  // Change type importance
+  if (change.change_type === 'addition') score += 20;
+  else if (change.change_type === 'removal') score += 30; // Removals often more impactful
+  else if (change.change_type === 'modification') score += 15;
+  
+  return Math.round(score);
+};
+
 const KeyInsightsSummary: React.FC<KeyInsightsSummaryProps> = ({ 
   changes, 
   stakeholders, 
@@ -55,44 +98,82 @@ const KeyInsightsSummary: React.FC<KeyInsightsSummaryProps> = ({
   const generateInsights = (): KeyInsight[] => {
     const insights: KeyInsight[] = [];
 
+    // Prioritize changes by economic, legal, and social impact value to the US
+    const prioritizedChanges = changes
+      ?.map(change => ({
+        ...change,
+        impactScore: calculateImpactScore(change)
+      }))
+      .sort((a, b) => b.impactScore - a.impactScore)
+      .slice(0, 3) || [];
+
+    // Generate insights for top 3 most important changes
+    prioritizedChanges.forEach((change, index) => {
+      const priority = index === 0 ? 'highest' : index === 1 ? 'high' : 'medium';
+      const economicImpact = change.impact?.economic || '';
+      const legalImpact = change.impact?.legal || '';
+      const socialImpact = change.impact?.social || '';
+      
+      let impactDescription = '';
+      if (economicImpact && economicImpact.toLowerCase().includes('billion')) {
+        impactDescription = 'Major economic impact with billion-dollar implications';
+      } else if (economicImpact && (economicImpact.toLowerCase().includes('million') || economicImpact.toLowerCase().includes('cost'))) {
+        impactDescription = 'Significant economic impact on federal budget or economy';
+      } else if (legalImpact && legalImpact.toLowerCase().includes('federal')) {
+        impactDescription = 'Federal law changes affecting national governance';
+      } else if (socialImpact && (socialImpact.toLowerCase().includes('million') || socialImpact.toLowerCase().includes('benefit'))) {
+        impactDescription = 'Wide-reaching social impact affecting many Americans';
+      } else {
+        impactDescription = `${change.change_type === 'addition' ? 'New provision' : change.change_type === 'removal' ? 'Removed provision' : 'Modified provision'} with national implications`;
+      }
+
+      const priorityScore = change.us_priority_score || change.impactScore || 0;
+      const keywords = change.keywords?.slice(0, 3).join(', ') || '';
+      
+      insights.push({
+        id: `top-change-${index + 1}`,
+        text: `#${index + 1} Priority (Score: ${priorityScore}): ${impactDescription}${keywords ? ` | Key: ${keywords}` : ''}`,
+        severity: priority === 'highest' ? 'high' : priority === 'high' ? 'medium' : 'low',
+        urgency: priority === 'highest' ? 'high' : 'medium',
+        category: 'change',
+        icon: index === 0 ? <Star className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />,
+        source: `Top ${index + 1} US Impact (${change.confidence || 'medium'} confidence)`
+      });
+    });
+
+    // Add summary insights if we have changes
     if (changes && changes.length > 0) {
       const highConfidenceChanges = changes.filter(c => c.confidence === 'high');
-      const additions = changes.filter(c => c.change_type === 'addition');
-      const removals = changes.filter(c => c.change_type === 'removal');
+      const economicChanges = changes.filter(c => 
+        c.impact?.economic && (
+          c.impact.economic.toLowerCase().includes('billion') ||
+          c.impact.economic.toLowerCase().includes('million') ||
+          c.impact.economic.toLowerCase().includes('cost') ||
+          c.impact.economic.toLowerCase().includes('budget')
+        )
+      );
+
+      if (economicChanges.length > 0) {
+        insights.push({
+          id: 'economic-impact',
+          text: `${economicChanges.length} changes with significant economic impact on US budget or economy`,
+          severity: 'high',
+          urgency: 'high',
+          category: 'change',
+          icon: <TrendingUp className="w-4 h-4" />,
+          source: 'Economic Analysis'
+        });
+      }
 
       if (highConfidenceChanges.length > 0) {
         insights.push({
           id: 'high-confidence-changes',
-          text: `${highConfidenceChanges.length} high-confidence changes detected that will significantly alter the legislation`,
-          severity: 'high',
-          urgency: 'high',
-          category: 'change',
-          icon: <AlertCircle className="w-4 h-4" />,
-          source: 'Changes Analysis'
-        });
-      }
-
-      if (additions.length > 2) {
-        insights.push({
-          id: 'many-additions',
-          text: `${additions.length} new sections added, expanding the scope of the legislation`,
-          severity: 'medium',
-          urgency: 'medium',
-          category: 'change',
-          icon: <TrendingUp className="w-4 h-4" />,
-          source: 'Changes Analysis'
-        });
-      }
-
-      if (removals.length > 0) {
-        insights.push({
-          id: 'content-removed',
-          text: `${removals.length} sections removed, potentially reducing protections or benefits`,
+          text: `${highConfidenceChanges.length} high-confidence changes with verified legislative impact`,
           severity: 'medium',
           urgency: 'high',
           category: 'change',
-          icon: <XCircle className="w-4 h-4" />,
-          source: 'Changes Analysis'
+          icon: <CheckCircle className="w-4 h-4" />,
+          source: 'Confidence Analysis'
         });
       }
     }

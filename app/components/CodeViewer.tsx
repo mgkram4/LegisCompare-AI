@@ -7,7 +7,7 @@ interface CodeViewerProps {
 }
 
 const CodeViewer: React.FC<CodeViewerProps> = ({
-  code, language = 'text',
+  code,
 }) => {
   const calculateWordCount = (text: string) => text.split(/\s+/).filter(Boolean).length;
   const calculateReadingTime = (text: string, wordsPerMinute: number = 200) => {
