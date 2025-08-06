@@ -14,8 +14,9 @@ async function extractTextFromPDFBuffer(buffer: Buffer, filename: string): Promi
     // Try pdf-parse first (more reliable for most PDFs)
     try {
       console.log('Attempting pdf-parse extraction...');
-      // Use require instead of dynamic import for better compatibility
-      const pdfParse = require('pdf-parse');
+      // Use dynamic import for ESLint compatibility
+      const pdfParseModule = await import('pdf-parse');
+      const pdfParse = pdfParseModule.default;
       const data = await pdfParse(buffer, {
         max: 0 // Parse all pages
       });
@@ -42,8 +43,9 @@ async function extractTextFromPDFBuffer(buffer: Buffer, filename: string): Promi
     // Fallback: try pdf-parse with simpler options
     try {
       console.log('Attempting simple pdf-parse fallback...');
-      // Use require instead of dynamic import for better compatibility
-      const pdfParse = require('pdf-parse');
+      // Use dynamic import for ESLint compatibility
+      const pdfParseModule = await import('pdf-parse');
+      const pdfParse = pdfParseModule.default;
       const data = await pdfParse(buffer);
       
       if (data.text && data.text.trim().length > 0) {

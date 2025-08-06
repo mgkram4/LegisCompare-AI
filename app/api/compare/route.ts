@@ -224,7 +224,7 @@ The Secretary is authorized to provide grants and additional funding mechanisms.
       console.log(`Extraction time: ${extractionTime}ms`);
       console.log(`Text extracted: Bill A (${billAText.length} chars), Bill B (${billBText.length} chars)`);
     } catch (pdfError) {
-      console.log('PDF extraction failed, falling back to demo mode:', pdfError.message);
+      console.log('PDF extraction failed, falling back to demo mode:', pdfError instanceof Error ? pdfError.message : 'Unknown error');
       
       // Fallback to demo text when PDF processing fails
       billAText = `SAMPLE BILL A - ${billA.name}
