@@ -6,6 +6,9 @@ const nextConfig: NextConfig = {
   experimental: {
     serverMinification: false,
   },
+  images: {
+    domains: ['source.unsplash.com'],
+  },
   webpack: (config) => {
     // Aliases
     config.resolve.alias = {

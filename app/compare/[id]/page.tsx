@@ -152,7 +152,7 @@ export default function CompareResultsPage() {
 
         <StakeholderAnalysis stakeholders={stakeholder_analysis} groupByCategory={true} />
         
-        <ImpactForecast forecast={impact_forecast} showAssumptions={true} detailLevel="high" />
+        <ImpactForecast forecast={impact_forecast} showAssumptions={true} />
         
       </main>
     </div>

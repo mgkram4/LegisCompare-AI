@@ -29,7 +29,11 @@ export function StakeholderAnalysis({ stakeholders, groupByCategory }: { stakeho
       }, {} as Record<string, Stakeholder[]>)
     : { 'All Stakeholders': stakeholders };
 
-  const CustomTooltip = ({ active, payload, label }: any) => {
+  const CustomTooltip = ({ active, payload, label }: { 
+    active?: boolean; 
+    payload?: Array<{ payload: { fullData: Stakeholder } }>; 
+    label?: string 
+  }) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload.fullData;
       return (

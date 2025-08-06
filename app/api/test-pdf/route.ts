@@ -1,6 +1,6 @@
 // app/api/test-pdf/route.ts
-import { extractTextFromFile } from '@/lib/utils';
 import { NextRequest, NextResponse } from 'next/server';
+import { extractTextFromFile } from '../../../lib/utils';
 
 export async function POST(request: NextRequest) {
   console.log('=== PDF TEST ENDPOINT STARTED ===');
@@ -32,11 +32,13 @@ export async function POST(request: NextRequest) {
       preview: text.substring(0, 500) + (text.length > 500 ? '...' : ''),
       fullText: text // Include full text for testing purposes
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('=== PDF TEST ENDPOINT ERROR ===', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    const errorStack = error instanceof Error ? error.stack : undefined;
     return NextResponse.json({ 
-      error: error.message,
-      stack: error.stack,
+      error: errorMessage,
+      stack: errorStack,
       timestamp: new Date().toISOString()
     }, { status: 500 });
   }

@@ -21,7 +21,8 @@ export default function TestUpload() {
       const data = await response.json();
       setResult(JSON.stringify(data, null, 2));
     } catch (error) {
-      setResult(`Error: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      setResult(`Error: ${errorMessage}`);
     } finally {
       setLoading(false);
     }

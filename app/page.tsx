@@ -1,10 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
 
 export default function HomePage() {
-  const [isLoading, setIsLoading] = useState(false);
 
   return (
     <div className="min-h-screen bg-white">
@@ -46,30 +44,6 @@ export default function HomePage() {
               >
                 Learn How It Works
               </a>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Trust Banner */}
-      <section className="bg-[#e6e6e6] py-8">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
-            <div>
-              <div className="text-3xl font-bold text-[#005ea2]">500+</div>
-              <div className="text-sm text-gray-700">Documents Analyzed</div>
-            </div>
-            <div>
-              <div className="text-3xl font-bold text-[#005ea2]">98%</div>
-              <div className="text-sm text-gray-700">Accuracy Rate</div>
-            </div>
-            <div>
-              <div className="text-3xl font-bold text-[#005ea2]">4+ hrs</div>
-              <div className="text-sm text-gray-700">Saved Per Analysis</div>
-            </div>
-            <div>
-              <div className="text-3xl font-bold text-[#005ea2]">100%</div>
-              <div className="text-sm text-gray-700">Secure & Confidential</div>
             </div>
           </div>
         </div>
@@ -117,43 +91,43 @@ export default function HomePage() {
           <h2 className="text-3xl font-bold text-center text-[#1b1b1b] mb-12">
             Powerful Analysis Features
           </h2>
-          <div className="space-y-12">
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
             {[
               {
                 title: "Change Detection",
                 description: "Side-by-side comparison with highlighted modifications, additions, and deletions",
-                icon: "📊"
+                icon: "📊",
               },
               {
                 title: "Stakeholder Analysis",
                 description: "Identify who benefits and who's affected by the proposed changes",
-                icon: "👥"
+                icon: "👥",
               },
               {
                 title: "Impact Forecasting",
                 description: "Economic, social, and political projections for short and long-term effects",
-                icon: "📈"
+                icon: "📈",
               },
               {
                 title: "Executive Summaries",
                 description: "Clear, actionable insights designed for quick decision-making",
-                icon: "📋"
+                icon: "📋",
               },
               {
                 title: "Evidence-Based",
                 description: "Direct quotes and citations included for verification and transparency",
-                icon: "✓"
+                icon: "✓",
+              },
+               {
+                title: "Bias Detection",
+                description: "Coming soon: Analyze text for potential bias",
+                icon: "🎯",
               }
             ].map((feature, index) => (
-              <div key={index} className={`flex flex-col md:flex-row gap-6 items-center ${index % 2 === 1 ? 'md:flex-row-reverse' : ''}`}>
-                <div className="flex-1">
-                  <div className="text-4xl mb-4">{feature.icon}</div>
-                  <h3 className="text-2xl font-semibold text-[#1b1b1b] mb-2">{feature.title}</h3>
-                  <p className="text-gray-600 text-lg">{feature.description}</p>
-                </div>
-                <div className="flex-1 bg-white p-8 rounded-lg shadow-sm border border-gray-200">
-                  <div className="h-48 bg-gradient-to-br from-[#005ea2] to-[#1a4480] rounded opacity-10"></div>
-                </div>
+              <div key={index} className="bg-white p-6 rounded-lg shadow-md border border-gray-200 text-center">
+                  <div className="text-4xl mb-4 inline-block">{feature.icon}</div>
+                  <h3 className="text-xl font-semibold text-[#1b1b1b] mb-2">{feature.title}</h3>
+                  <p className="text-gray-600">{feature.description}</p>
               </div>
             ))}
           </div>

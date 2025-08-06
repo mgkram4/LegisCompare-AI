@@ -38,7 +38,7 @@ function ForecastTimelineNode({ title, forecast, isLast = false }: { title: stri
     );
 }
 
-export function ImpactForecast({ forecast, showAssumptions, detailLevel }: { forecast: ImpactForecastData, showAssumptions?: boolean, detailLevel?: 'high' | 'medium' | 'low' }) {
+export function ImpactForecast({ forecast, showAssumptions }: { forecast: ImpactForecastData, showAssumptions?: boolean }) {
   return (
     <section id="impact-forecast">
       <h2 className="text-2xl font-semibold text-slate-800 border-b-2 border-slate-300 pb-2 mb-6">

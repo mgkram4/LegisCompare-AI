@@ -14,11 +14,9 @@ async function extractTextFromPDFBuffer(buffer: Buffer, filename: string): Promi
     // Try pdf-parse first (more reliable for most PDFs)
     try {
       console.log('Attempting pdf-parse extraction...');
-      const pdfParse = require('pdf-parse');
+      const pdfParse = await import('pdf-parse').then(m => m.default);
       const data = await pdfParse(buffer, {
-        normalizeWhitespace: false,
-        max: 0, // Parse all pages
-        version: 'v2.0.550'
+        max: 0 // Parse all pages
       });
       
       console.log('pdf-parse result:', {
@@ -40,70 +38,18 @@ async function extractTextFromPDFBuffer(buffer: Buffer, filename: string): Promi
       console.warn(`pdf-parse failed:`, pdfParseError instanceof Error ? pdfParseError.message : 'Unknown error');
     }
     
-    // Fallback to pdfjs-dist if pdf-parse fails
+    // Fallback: try pdf-parse with simpler options
     try {
-      console.log('Attempting pdfjs-dist extraction...');
-      
-      // Use the specific version that's installed
-      const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js');
-      
-      // Set up the worker
-      const pdfjsWorker = require('pdfjs-dist/legacy/build/pdf.worker.js');
-      pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
-      
-      console.log('Loading PDF with pdfjs-dist...');
-      
-      // Load the PDF document
-      const loadingTask = pdfjsLib.getDocument({ data: buffer });
-      const pdf = await loadingTask.promise;
-      
-      console.log(`PDF loaded with pdfjs-dist, pages: ${pdf.numPages}`);
-      
-      let extractedText = "";
-      
-      // Extract text from each page
-      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-        console.log(`Processing page ${pageNum}/${pdf.numPages}...`);
-        const page = await pdf.getPage(pageNum);
-        const textContent = await page.getTextContent();
-        
-        console.log(`Page ${pageNum} has ${textContent.items.length} text items`);
-        
-        // Combine text items
-        const pageText = textContent.items
-          .map((item: any) => item.str)
-          .join(' ');
-        
-        extractedText += pageText;
-        extractedText += "\n\n"; // Add spacing between pages
-        
-        console.log(`Page ${pageNum} text length: ${pageText.length} characters`);
-      }
-      
-      if (extractedText.trim().length > 0) {
-        console.log(`PDF text extracted successfully using pdfjs-dist`);
-        console.log(`Text length: ${extractedText.length} characters`);
-        return extractedText;
-      } else {
-        console.log('pdfjs-dist returned empty text');
-      }
-    } catch (pdfjsError) {
-      console.error(`pdfjs-dist failed:`, pdfjsError instanceof Error ? pdfjsError.message : 'Unknown error');
-      console.error('Full error:', pdfjsError);
-    }
-    
-    // If both methods fail, try a simpler approach with just pdf-parse
-    try {
-      console.log('Attempting simple pdf-parse extraction...');
-      const pdfParse = require('pdf-parse');
+      console.log('Attempting simple pdf-parse fallback...');
+      const pdfParse = await import('pdf-parse').then(m => m.default);
       const data = await pdfParse(buffer);
       
       if (data.text && data.text.trim().length > 0) {
         console.log(`Simple pdf-parse succeeded with ${data.text.length} characters`);
         return data.text;
       }
-    } catch (simpleError) {
-      console.error('Simple pdf-parse also failed:', simpleError.message);
+    } catch (fallbackError) {
+      console.warn(`Simple pdf-parse failed:`, fallbackError instanceof Error ? fallbackError.message : 'Unknown error');
     }
     
     throw new Error('No text could be extracted from the PDF using any available method.');
