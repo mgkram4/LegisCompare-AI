@@ -86,10 +86,10 @@ export default function CompareResultsPage() {
         }
 
         const formData = new FormData();
-        formData.append('billA', fileA);
-        formData.append('billB', fileB);
+        formData.append('bill_a_file', fileA);
+        formData.append('bill_b_file', fileB);
 
-        const response = await axios.post<AnalysisResult>('/api/compare', formData);
+        const response = await axios.post<AnalysisResult>('https://mixed-stove-production.up.railway.app/api/compare', formData);
         setAnalysisResult(response.data);
 
       } catch (err) {

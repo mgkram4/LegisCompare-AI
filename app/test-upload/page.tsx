@@ -13,7 +13,7 @@ export default function TestUpload() {
     const formData = new FormData(e.currentTarget);
     
     try {
-      const response = await fetch('/api/compare', {
+      const response = await fetch('https://mixed-stove-production.up.railway.app/api/compare', {
         method: 'POST',
         body: formData,
       });
