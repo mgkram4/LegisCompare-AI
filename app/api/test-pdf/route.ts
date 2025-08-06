@@ -1,6 +1,6 @@
 // app/api/test-pdf/route.ts
-import { NextRequest, NextResponse } from 'next/server';
 import { extractTextFromFile } from '../../../lib/utils';
+import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
   console.log('=== PDF TEST ENDPOINT STARTED ===');

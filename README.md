@@ -1,4 +1,4 @@
-# 🏛️ Doge: Legislative Analysis Platform
+# Legislative Analysis Platform
 
 **Last Updated: January 2025**
 
