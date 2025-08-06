@@ -45,7 +45,7 @@ app.add_middleware(
 
 # Configure OpenAI
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")  # Try simpler model for better connectivity
 
 class ComparisonRequest(BaseModel):
     bill_a_name: str
@@ -169,11 +169,19 @@ def analyze_documents_with_ai(bill_a_text: str, bill_b_text: str) -> dict:
         
         # Call OpenAI API with better error handling
         try:
+            import httpx
+            # Use custom HTTP client for better connectivity
+            http_client = httpx.Client(
+                timeout=300.0,
+                follow_redirects=True,
+                verify=True
+            )
+            
             client = OpenAI(
                 api_key=OPENAI_API_KEY,
                 timeout=300.0,  # 5 minute timeout (increased for production)
                 max_retries=5,   # More retries for production
-                base_url="https://api.openai.com/v1"  # Explicit base URL
+                http_client=http_client
             )
             logger.info("OpenAI client initialized, making API call...")
             
@@ -265,11 +273,19 @@ async def test_openai():
             return {"error": "OpenAI API key not configured", "status": "failed"}
         
         logger.info("Testing OpenAI API connectivity...")
+        import httpx
+        # Use custom HTTP client for better connectivity
+        http_client = httpx.Client(
+            timeout=120.0,
+            follow_redirects=True,
+            verify=True
+        )
+        
         client = OpenAI(
             api_key=OPENAI_API_KEY,
             timeout=120.0,  # 2 minute timeout for test
             max_retries=3,
-            base_url="https://api.openai.com/v1"  # Explicit base URL
+            http_client=http_client
         )
         
         # Simple test request
