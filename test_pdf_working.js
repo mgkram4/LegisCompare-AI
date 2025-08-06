@@ -7,12 +7,12 @@ async function testPDFs() {
     console.log('Testing PDF document comparison...');
     
     const formData = new FormData();
-    formData.append('billA_file', fs.createReadStream('./app/pdf/Document_1.2_Original.pdf'), 'Document_1.2_Original.pdf');
-    formData.append('billB_file', fs.createReadStream('./app/pdf/Document_1.3_Revised.pdf'), 'Document_1.3_Revised.pdf');
+    formData.append('billA', fs.createReadStream('./test/hr1_enrolled.pdf'), 'hr1_enrolled.pdf');
+    formData.append('billB', fs.createReadStream('./test/hr748_enrolled.pdf'), 'hr748_enrolled.pdf');
     
     console.log('Sending PDF files for analysis...');
     
-    const response = await axios.post('http://localhost:3000/api/compare', formData, {
+    const response = await axios.post('http://localhost:3002/api/compare', formData, {
       headers: formData.getHeaders(),
       timeout: 60000 // 60 second timeout for PDF processing
     });

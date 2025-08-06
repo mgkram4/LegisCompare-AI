@@ -20,7 +20,10 @@ async function testPDFExtraction(pdfPath) {
     // Make request to test endpoint
     const response = await fetch('http://localhost:3000/api/test-pdf', {
       method: 'POST',
-      body: formData
+      body: formData,
+      headers: {
+        ...formData.getHeaders()
+      }
     });
     
     const result = await response.json();

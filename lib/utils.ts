@@ -14,7 +14,8 @@ async function extractTextFromPDFBuffer(buffer: Buffer, filename: string): Promi
     // Try pdf-parse first (more reliable for most PDFs)
     try {
       console.log('Attempting pdf-parse extraction...');
-      const pdfParse = await import('pdf-parse').then(m => m.default);
+      // Use require instead of dynamic import for better compatibility
+      const pdfParse = require('pdf-parse');
       const data = await pdfParse(buffer, {
         max: 0 // Parse all pages
       });
@@ -41,7 +42,8 @@ async function extractTextFromPDFBuffer(buffer: Buffer, filename: string): Promi
     // Fallback: try pdf-parse with simpler options
     try {
       console.log('Attempting simple pdf-parse fallback...');
-      const pdfParse = await import('pdf-parse').then(m => m.default);
+      // Use require instead of dynamic import for better compatibility
+      const pdfParse = require('pdf-parse');
       const data = await pdfParse(buffer);
       
       if (data.text && data.text.trim().length > 0) {
@@ -68,14 +70,18 @@ export async function extractTextFromFile(file: File): Promise<string> {
   }
   
   console.log(`Processing file: ${file.name} (${file.size} bytes), type: ${fileExtension}`);
+  console.log(`File constructor: ${file.constructor.name}, instanceof File: ${file instanceof File}`);
   
   if (fileExtension === 'pdf') {
     try {
       // Convert File to Buffer
+      console.log('Converting File to arrayBuffer...');
       const arrayBuffer = await file.arrayBuffer();
+      console.log(`ArrayBuffer created: ${arrayBuffer.byteLength} bytes`);
       const buffer = Buffer.from(arrayBuffer);
       
       console.log(`File converted to buffer: ${buffer.length} bytes`);
+      console.log(`Buffer preview (first 20 bytes): ${Array.from(buffer.slice(0, 20)).map(b => b.toString(16).padStart(2, '0')).join(' ')}`);
       
       // Extract text from PDF
       const extractedText = await extractTextFromPDFBuffer(buffer, file.name);
