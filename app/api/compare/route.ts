@@ -141,6 +141,11 @@ async function analyzeDocumentsWithAI(billAText: string, billBText: string) {
 }
 
 export async function POST(request: NextRequest) {
+  // Disable this endpoint - all requests should go to Railway backend
+  return NextResponse.json(
+    { error: 'This endpoint is disabled. Please use the Railway backend directly.' },
+    { status: 503 }
+  );
   try {
     console.log('=== STARTING DOCUMENT COMPARISON ===');
     
