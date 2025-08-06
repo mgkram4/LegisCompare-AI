@@ -10,3 +10,5 @@ restartPolicyMaxRetries = 10
 
 [environments.production.variables]
 NIXPACKS_PYTHON_VERSION = "3.11"
+NIXPACKS_PKGS = "python311 python311Packages.pip"
+NIXPACKS_INSTALL_CMD = "pip install -r backend/requirements.txt"

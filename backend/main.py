@@ -170,6 +170,7 @@ def analyze_documents_with_ai(bill_a_text: str, bill_b_text: str) -> dict:
         # Call OpenAI API with better error handling
         try:
             import httpx
+
             # Use custom HTTP client for better connectivity
             http_client = httpx.Client(
                 timeout=300.0,
@@ -274,6 +275,7 @@ async def test_openai():
         
         logger.info("Testing OpenAI API connectivity...")
         import httpx
+
         # Use custom HTTP client for better connectivity
         http_client = httpx.Client(
             timeout=120.0,
