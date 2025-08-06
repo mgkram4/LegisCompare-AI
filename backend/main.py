@@ -45,7 +45,7 @@ app.add_middleware(
 
 # Configure OpenAI
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1")
 
 class ComparisonRequest(BaseModel):
     bill_a_name: str
@@ -163,8 +163,8 @@ def analyze_documents_with_ai(bill_a_text: str, bill_b_text: str) -> dict:
         # Latest OpenAI client initialization (v1.56+)
         client = OpenAI(
             api_key=OPENAI_API_KEY,
-            timeout=60.0,  # 60 second timeout
-            max_retries=2
+            timeout=120.0,  # 120 second timeout (increased)
+            max_retries=3   # More retries
         )
         response = client.chat.completions.create(
             model=OPENAI_MODEL,
