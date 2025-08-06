@@ -171,8 +171,9 @@ def analyze_documents_with_ai(bill_a_text: str, bill_b_text: str) -> dict:
         try:
             client = OpenAI(
                 api_key=OPENAI_API_KEY,
-                timeout=180.0,  # 3 minute timeout (increased)
-                max_retries=3   # More retries
+                timeout=300.0,  # 5 minute timeout (increased for production)
+                max_retries=5,   # More retries for production
+                base_url="https://api.openai.com/v1"  # Explicit base URL
             )
             logger.info("OpenAI client initialized, making API call...")
             
@@ -266,8 +267,9 @@ async def test_openai():
         logger.info("Testing OpenAI API connectivity...")
         client = OpenAI(
             api_key=OPENAI_API_KEY,
-            timeout=30.0,
-            max_retries=1
+            timeout=120.0,  # 2 minute timeout for test
+            max_retries=3,
+            base_url="https://api.openai.com/v1"  # Explicit base URL
         )
         
         # Simple test request
