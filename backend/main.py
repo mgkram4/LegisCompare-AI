@@ -31,8 +31,8 @@ app = FastAPI(
 ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "https://*.vercel.app",
-    "https://contest-doge.vercel.app",  # Replace with your actual Vercel URL
+    "https://legal-tool-git-main-mgkram4s-projects.vercel.app",  # Your Vercel URL from earlier
+    "*"  # Temporarily allow all origins for testing
 ]
 
 app.add_middleware(

@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
     backendFormData.append('bill_b_file', billB);
 
     // Call the Python backend
-    const backendUrl = process.env.BACKEND_URL || 'http://localhost:8000';
+    const backendUrl = process.env.BACKEND_URL || 'https://legal-tool.onrender.com';
     const response = await fetch(`${backendUrl}/api/compare`, {
       method: 'POST',
       body: backendFormData,
