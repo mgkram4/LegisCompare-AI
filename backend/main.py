@@ -45,7 +45,7 @@ app.add_middleware(
 
 # Configure OpenAI
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4")
 
 class ComparisonRequest(BaseModel):
     bill_a_name: str
