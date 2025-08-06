@@ -25,8 +25,8 @@ export async function POST(request: NextRequest) {
     backendFormData.append('bill_a_file', billA);
     backendFormData.append('bill_b_file', billB);
 
-    // Call the Python backend - using local backend due to Render connectivity issues
-    const backendUrl = process.env.BACKEND_URL || 'http://localhost:8000';
+    // Call the Python backend
+    const backendUrl = process.env.BACKEND_URL || 'https://doge-backend-production.up.railway.app';
     const response = await fetch(`${backendUrl}/api/compare`, {
       method: 'POST',
       body: backendFormData,
