@@ -114,6 +114,11 @@ def analyze_documents_with_ai(bill_a_text: str, bill_b_text: str) -> dict:
     try:
         logger.info("Starting AI analysis of documents")
         
+        # Check if API key is available
+        if not OPENAI_API_KEY:
+            logger.error("OpenAI API key is not configured")
+            raise HTTPException(status_code=500, detail="OpenAI API key is not configured")
+        
         # Prepare the prompt for analysis
         prompt = f"""
         Analyze these two legislative documents and provide detailed comparison information.
@@ -159,25 +164,49 @@ def analyze_documents_with_ai(bill_a_text: str, bill_b_text: str) -> dict:
         }}
         """
         
-        # Call OpenAI API
-        # Latest OpenAI client initialization (v1.56+)
-        client = OpenAI(
-            api_key=OPENAI_API_KEY,
-            timeout=120.0,  # 120 second timeout (increased)
-            max_retries=3   # More retries
-        )
-        response = client.chat.completions.create(
-            model=OPENAI_MODEL,
-            messages=[
-                {"role": "system", "content": "You are an expert legislative analyst. Provide detailed, accurate analysis in JSON format."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.3,
-            max_tokens=4000
-        )
+        logger.info(f"Prompt length: {len(prompt)} characters")
+        logger.info(f"Using OpenAI model: {OPENAI_MODEL}")
+        
+        # Call OpenAI API with better error handling
+        try:
+            client = OpenAI(
+                api_key=OPENAI_API_KEY,
+                timeout=180.0,  # 3 minute timeout (increased)
+                max_retries=3   # More retries
+            )
+            logger.info("OpenAI client initialized, making API call...")
+            
+            response = client.chat.completions.create(
+                model=OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": "You are an expert legislative analyst. Provide detailed, accurate analysis in JSON format."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.3,
+                max_tokens=4000
+            )
+            logger.info("OpenAI API call completed successfully")
+            
+        except Exception as openai_error:
+            logger.error(f"OpenAI API call failed: {str(openai_error)}")
+            logger.error(f"OpenAI error type: {type(openai_error).__name__}")
+            
+            # Check for specific OpenAI error types
+            error_message = str(openai_error)
+            if "connection" in error_message.lower():
+                raise HTTPException(status_code=500, detail="Connection error: Unable to connect to OpenAI API. Please check your internet connection.")
+            elif "authentication" in error_message.lower() or "api key" in error_message.lower():
+                raise HTTPException(status_code=500, detail="Authentication error: Invalid OpenAI API key.")
+            elif "rate limit" in error_message.lower():
+                raise HTTPException(status_code=429, detail="Rate limit exceeded: OpenAI API rate limit reached. Please try again later.")
+            elif "timeout" in error_message.lower():
+                raise HTTPException(status_code=504, detail="Timeout error: OpenAI API request timed out. Please try again.")
+            else:
+                raise HTTPException(status_code=500, detail=f"OpenAI API error: {error_message}")
         
         # Parse the response
         content = response.choices[0].message.content
+        logger.info(f"Received response from OpenAI: {len(content)} characters")
         
         # Try to extract JSON from the response
         try:
@@ -187,7 +216,9 @@ def analyze_documents_with_ai(bill_a_text: str, bill_b_text: str) -> dict:
             if start_idx != -1 and end_idx != 0:
                 json_str = content[start_idx:end_idx]
                 result = json.loads(json_str)
+                logger.info("Successfully parsed JSON response from OpenAI")
             else:
+                logger.error(f"No JSON found in OpenAI response: {content[:500]}...")
                 raise ValueError("No JSON found in response")
                 
         except json.JSONDecodeError as e:
@@ -198,8 +229,11 @@ def analyze_documents_with_ai(bill_a_text: str, bill_b_text: str) -> dict:
         logger.info("AI analysis completed successfully")
         return result
         
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
     except Exception as e:
-        logger.error(f"Error in AI analysis: {str(e)}")
+        logger.error(f"Unexpected error in AI analysis: {str(e)}")
         logger.error(f"Error type: {type(e).__name__}")
         logger.error(f"Error details: {e}")
         import traceback
@@ -221,6 +255,49 @@ async def health_check():
         "model": OPENAI_MODEL,
         "timestamp": datetime.now().isoformat()
     }
+
+@app.get("/test-openai")
+async def test_openai():
+    """Test OpenAI API connectivity."""
+    try:
+        if not OPENAI_API_KEY:
+            return {"error": "OpenAI API key not configured", "status": "failed"}
+        
+        logger.info("Testing OpenAI API connectivity...")
+        client = OpenAI(
+            api_key=OPENAI_API_KEY,
+            timeout=30.0,
+            max_retries=1
+        )
+        
+        # Simple test request
+        response = client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[
+                {"role": "user", "content": "Say 'Hello' in JSON format like {\"message\": \"Hello\"}"}
+            ],
+            temperature=0,
+            max_tokens=50
+        )
+        
+        content = response.choices[0].message.content
+        logger.info(f"OpenAI test successful: {content}")
+        
+        return {
+            "status": "success",
+            "model": OPENAI_MODEL,
+            "response": content,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"OpenAI test failed: {str(e)}")
+        return {
+            "status": "failed",
+            "error": str(e),
+            "error_type": type(e).__name__,
+            "timestamp": datetime.now().isoformat()
+        }
 
 @app.post("/api/test-pdf")
 async def test_pdf_extraction(file: UploadFile = File(...)):
