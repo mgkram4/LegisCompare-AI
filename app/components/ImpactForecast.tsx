@@ -28,9 +28,9 @@ function ForecastTimelineNode({ title, forecast, isLast = false }: { title: stri
                 <div className="ml-6">
                     <h4 className="text-xl font-bold text-slate-800 mb-2">{title}</h4>
                     <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-200 space-y-3">
-                        <p><span className="font-semibold text-blue-800">Economic:</span> {forecast.economic}</p>
-                        <p><span className="font-semibold text-purple-800">Social:</span> {forecast.social}</p>
-                        <p><span className="font-semibold text-green-800">Political:</span> {forecast.political}</p>
+                        <p><span className="font-semibold text-blue-800">Economic:</span> <span className="text-black">{forecast.economic}</span></p>
+                        <p><span className="font-semibold text-purple-800">Social:</span> <span className="text-black">{forecast.social}</span></p>
+                        <p><span className="font-semibold text-green-800">Political:</span> <span className="text-black">{forecast.political}</span></p>
                     </div>
                 </div>
             </div>
